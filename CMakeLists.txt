@@ -37,8 +37,8 @@ if (PICO_CYW43_SUPPORTED) # set by BOARD=pico-w
             )
 
             # enable usb output, disable uart output
-            pico_enable_stdio_usb(picow_iot 1)
-            pico_enable_stdio_uart(picow_iot 0)
+            pico_enable_stdio_usb(picow_iot 0)
+            pico_enable_stdio_uart(picow_iot 1)
 
             target_compile_definitions(picow_iot PRIVATE
             WIFI_SSID=\"${WIFI_SSID}\"
