@@ -37,13 +37,14 @@ if (PICO_CYW43_SUPPORTED) # set by BOARD=pico-w
             )
 
             # enable usb output, disable uart output
-            pico_enable_stdio_usb(picow_iot 0)
-            pico_enable_stdio_uart(picow_iot 1)
+            pico_enable_stdio_usb(picow_iot 1)
+            pico_enable_stdio_uart(picow_iot 0)
 
             target_compile_definitions(picow_iot PRIVATE
             WIFI_SSID=\"${WIFI_SSID}\"
             WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
             TEST_TCP_SERVER_IP=\"${TEST_TCP_SERVER_IP}\"
+            NO_SYS=1
             )
 
             target_include_directories(picow_iot PRIVATE
@@ -52,7 +53,7 @@ if (PICO_CYW43_SUPPORTED) # set by BOARD=pico-w
             )
 
             target_link_libraries(picow_iot
-                pico_cyw43_arch_lwip_threadsafe_background
+                pico_cyw43_arch_lwip_poll
                 pico_stdlib
                 pico_lwip_mbedtls
                 pico_mbedtls

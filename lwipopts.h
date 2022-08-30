@@ -25,7 +25,7 @@
 #define LWIP_ETHERNET               1
 #define LWIP_ICMP                   1
 #define LWIP_RAW                    1
-#define TCP_WND                     32000
+#define TCP_WND                     (16384*2)
 #define TCP_MSS                     1460
 #define TCP_SND_BUF                 (8 * TCP_MSS)
 #define TCP_SND_QUEUELEN            ((4 * (TCP_SND_BUF) + (TCP_MSS - 1)) / (TCP_MSS))
@@ -33,9 +33,9 @@
 #define LWIP_NETIF_LINK_CALLBACK    1
 #define LWIP_NETIF_HOSTNAME         1
 #define LWIP_NETCONN                0
-#define MEM_STATS                   0
+#define MEM_STATS                   1
 #define SYS_STATS                   0
-#define MEMP_STATS                  0
+#define MEMP_STATS                  1
 #define LINK_STATS                  0
 // #define ETH_PAD_SIZE                2
 #define LWIP_CHKSUM_ALGORITHM       3
@@ -54,6 +54,9 @@
 #define LWIP_STATS                  1
 #define LWIP_STATS_DISPLAY          1
 #endif
+
+#define MEM_OVERFLOW_CHECK 1
+#define MEMP_OVERFLOW_CHECK 1
 
 #define ETHARP_DEBUG                LWIP_DBG_OFF
 #define NETIF_DEBUG                 LWIP_DBG_OFF
@@ -83,13 +86,14 @@
 #define PPP_DEBUG                   LWIP_DBG_OFF
 #define SLIP_DEBUG                  LWIP_DBG_OFF
 #define DHCP_DEBUG                  LWIP_DBG_OFF
+#define ALTCP_MBEDTLS_DEBUG      LWIP_DBG_OFF
+#define MQTT_DEBUG               LWIP_DBG_OFF
+#define ALTCP_MBEDTLS_MEM_DEBUG   LWIP_DBG_OFF
 
 #define LWIP_ALTCP               1
 #define LWIP_ALTCP_TLS           1
 #define LWIP_ALTCP_TLS_MBEDTLS   1
 
 
-#define LWIP_DEBUG               1
-#define ALTCP_MBEDTLS_DEBUG      LWIP_DBG_OFF
-#define MQTT_DEBUG               LWIP_DBG_OFF
+
 #endif

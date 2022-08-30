@@ -16,13 +16,13 @@
 
 #include "lwip/apps/mqtt_priv.h"
 
-// #include "tusb.h"
+#include "tusb.h"
 
 #define DEBUG_printf printf
 
-#define MQTT_TLS 0 // needs to be 1 for AWS IoT
-// #define CRYPTO_AWS_IOT
-#define CRYPTO_MOSQUITTO_TEST
+#define MQTT_TLS 1 // needs to be 1 for AWS IoT
+//#define CRYPTO_AWS_IOT
+#define CRYPTO_MOSQUITTO_LOCAL
 #include "crypto_consts.h"
 
 #if MQTT_TLS
@@ -104,16 +104,15 @@ void run_dns_lookup(MQTT_CLIENT_T *state) {
     }
 
     while (state->remote_addr.addr == 0) {
-        DEBUG_printf("waiting for DNS query to finish\n");
-        sleep_ms(1000);
+        cyw43_arch_poll();
+        sleep_ms(1);
     }
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
     MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     if (status != 0) {
-        DEBUG_printf("reconnecting due to %d.\n", status);
-        mqtt_test_connect(state);
+        DEBUG_printf("Error during connection: err %d.\n", status);
     } else {
         DEBUG_printf("MQTT connected.\n");
     }
@@ -126,7 +125,7 @@ void mqtt_pub_request_cb(void *arg, err_t err) {
     state->received++;
 }
 
-void mqtt_test_publish(MQTT_CLIENT_T *state)
+err_t mqtt_test_publish(MQTT_CLIENT_T *state)
 {
   char buffer[128];
 
@@ -140,11 +139,15 @@ void mqtt_test_publish(MQTT_CLIENT_T *state)
 
   err_t err;
   u8_t qos = 2; /* 0 1 or 2, see MQTT specification */
-  u8_t retain = 0; /* No don't retain such crappy payload... */
+  u8_t retain = 0;
+  cyw43_arch_lwip_begin();
   err = mqtt_publish(state->mqtt_client, "pico_w/test", buffer, strlen(buffer), qos, retain, mqtt_pub_request_cb, state);
+  cyw43_arch_lwip_end();
   if(err != ERR_OK) {
     DEBUG_printf("Publish err: %d\n", err);
   }
+
+  return err;
 }
 
 void mqtt_test_conn_config_cb(void *conn) {
@@ -178,6 +181,7 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
         (const u8_t *)ca, 1 + strlen((const char *)ca),
         (const u8_t *)key, 1 + strlen((const char *)key),
         (const u8_t *)"", 0,
+        
         (const u8_t *)cert, 1 + strlen((const char *)cert)
     );
     #elif defined(CRYPTO_CERT)
@@ -193,9 +197,7 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     ci.tls_config = tls_config;
     #endif
 
-    cyw43_arch_lwip_begin();
     err = mqtt_client_connect(state->mqtt_client, &(state->remote_addr), MQTT_SERVER_PORT, mqtt_connection_cb, state, &ci, mqtt_test_conn_config_cb);
-    cyw43_arch_lwip_end();
     
     if (err != ERR_OK) {
         DEBUG_printf("mqtt_connect return %d\n", err);
@@ -209,6 +211,8 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
 
     state->counter = 0;
 
+    u32_t notReady = 5000;
+
     if (state->mqtt_client == NULL) {
         DEBUG_printf("Failed to create new mqtt client\n");
         return;
@@ -216,34 +220,43 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
 
     if (mqtt_test_connect(state) == ERR_OK) {
         while (true) {
-            busy_wait_ms(1000);
-            if (mqtt_client_is_connected(state->mqtt_client)) {
-                cyw43_arch_lwip_begin();
-                state->receiving = 1;
-                mqtt_test_publish(state);
-                cyw43_arch_lwip_end();
-                DEBUG_printf("published %d\n", state->counter);
-                state->counter++;
-                busy_wait_ms(4000);
-            } else {
-                DEBUG_printf(".");
+            cyw43_arch_poll();
+            sleep_ms(1);
+            if (!notReady--) {
+                if (mqtt_client_is_connected(state->mqtt_client)) {
+                    cyw43_arch_lwip_begin();
+                    state->receiving = 1;
+                    if (mqtt_test_publish(state) == ERR_OK) {
+                        DEBUG_printf("published %d\n", state->counter);
+                        state->counter++;
+                    } // else ringbuffer is full and we need to wait for messages to flush.
+                    cyw43_arch_lwip_end();
+                } else {
+                    DEBUG_printf(".");
+                }
+
+                // MEM_STATS_DISPLAY();
+                // MEMP_STATS_DISPLAY(0);
+                // MEMP_STATS_DISPLAY(1);
+
+                notReady = 5000;
             }
         }
     }
 }
 
-// void wait_for_usb() {
-//     while (!tud_cdc_connected()) {
-//         DEBUG_printf(".");
-//         sleep_ms(500);
-//     }
-//     DEBUG_printf("usb host detected\n");
-// }
+void wait_for_usb() {
+    while (!tud_cdc_connected()) {
+        DEBUG_printf(".");
+        sleep_ms(500);
+    }
+    DEBUG_printf("usb host detected\n");
+}
 
 int main() {
     stdio_init_all();
 
-    // wait_for_usb();
+    wait_for_usb();
 
     if (cyw43_arch_init()) {
         DEBUG_printf("failed to initialise\n");
@@ -253,7 +266,7 @@ int main() {
 
     DEBUG_printf("Connecting to WiFi...\n");
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        DEBUG_printf("failed to connect.\n");
+        DEBUG_printf("failed to  connect.\n");
         return 1;
     } else {
         DEBUG_printf("Connected.\n");
