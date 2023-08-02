@@ -16,13 +16,13 @@
 
 #include "lwip/apps/mqtt_priv.h"
 
-#include "tusb.h"
+// #include "tusb.h"
 
 #define DEBUG_printf printf
 
-#define MQTT_TLS 1 // needs to be 1 for AWS IoT
-//#define CRYPTO_AWS_IOT
+#define MQTT_TLS 0 // needs to be 1 for AWS IoT. Also set published QoS to 0 or 1
 #define CRYPTO_MOSQUITTO_LOCAL
+//#define CRYPTO_AWS_IOT
 #include "crypto_consts.h"
 
 #if MQTT_TLS
@@ -47,26 +47,6 @@ typedef struct MQTT_CLIENT_T_ {
 } MQTT_CLIENT_T;
  
 err_t mqtt_test_connect(MQTT_CLIENT_T *state);
-
-/* cribbed from https://github.com/peterharperuk/pico-examples/tree/add_mbedtls_example */
-/* Function to feed mbedtls entropy. May be better to move it to pico-sdk */
-int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen) {
-    /* Code borrowed from pico_lwip_random_byte(), which is static, so we cannot call it directly */
-    static uint8_t byte;
-
-    for(int p=0; p<len; p++) {
-        for(int i=0;i<32;i++) {
-            // picked a fairly arbitrary polynomial of 0x35u - this doesn't have to be crazily uniform.
-            byte = ((byte << 1) | rosc_hw->randombit) ^ (byte & 0x80u ? 0x35u : 0);
-            // delay a little because the random bit is a little slow
-            busy_wait_at_least_cycles(30);
-        }
-        output[p] = byte;
-    }
-
-    *olen = len;
-    return 0;
-}
 
 // Perform initialisation
 static MQTT_CLIENT_T* mqtt_client_init(void) {
@@ -110,7 +90,6 @@ void run_dns_lookup(MQTT_CLIENT_T *state) {
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
-    MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     if (status != 0) {
         DEBUG_printf("Error during connection: err %d.\n", status);
     } else {
@@ -129,16 +108,10 @@ err_t mqtt_test_publish(MQTT_CLIENT_T *state)
 {
   char buffer[128];
 
-  #if MQTT_TLS
-  #define TLS_STR "TLS"
-  #else
-  #define TLS_STR ""
-  #endif
-
-  sprintf(buffer, "hello from picow %d / %d %s", state->received, state->counter, TLS_STR);
+  sprintf(buffer, "{\"message\":\"hello from picow %d / %d\"}", state->received, state->counter);
 
   err_t err;
-  u8_t qos = 2; /* 0 1 or 2, see MQTT specification */
+  u8_t qos = 0; /* 0 1 or 2, see MQTT specification.  AWS IoT does not support QoS 2 */
   u8_t retain = 0;
   cyw43_arch_lwip_begin();
   err = mqtt_publish(state->mqtt_client, "pico_w/test", buffer, strlen(buffer), qos, retain, mqtt_pub_request_cb, state);
@@ -147,13 +120,7 @@ err_t mqtt_test_publish(MQTT_CLIENT_T *state)
     DEBUG_printf("Publish err: %d\n", err);
   }
 
-  return err;
-}
-
-void mqtt_test_conn_config_cb(void *conn) {
-    #if MQTT_TLS
-    mbedtls_ssl_set_hostname(altcp_tls_context((struct altcp_pcb *)conn), MQTT_SERVER_HOST);
-    #endif
+  return err; 
 }
 
 err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
@@ -181,9 +148,11 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
         (const u8_t *)ca, 1 + strlen((const char *)ca),
         (const u8_t *)key, 1 + strlen((const char *)key),
         (const u8_t *)"", 0,
-        
         (const u8_t *)cert, 1 + strlen((const char *)cert)
     );
+    // set this here as its a niche case at the moment.
+    // see mqtt-sni.patch for changes to support this.
+    ci.server_name = MQTT_SERVER_HOST;
     #elif defined(CRYPTO_CERT)
     DEBUG_printf("Setting up TLS with cert.\n");
     tls_config = altcp_tls_create_config_client((const u8_t *) cert, 1 + strlen((const char *) cert));
@@ -197,7 +166,9 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     ci.tls_config = tls_config;
     #endif
 
-    err = mqtt_client_connect(state->mqtt_client, &(state->remote_addr), MQTT_SERVER_PORT, mqtt_connection_cb, state, &ci, mqtt_test_conn_config_cb);
+    const struct mqtt_connect_client_info_t *client_info = &ci;
+
+    err = mqtt_client_connect(state->mqtt_client, &(state->remote_addr), MQTT_SERVER_PORT, mqtt_connection_cb, state, client_info);
     
     if (err != ERR_OK) {
         DEBUG_printf("mqtt_connect return %d\n", err);
@@ -209,37 +180,33 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
 void mqtt_run_test(MQTT_CLIENT_T *state) {
     state->mqtt_client = mqtt_client_new();
 
-    state->counter = 0;
-
-    u32_t notReady = 5000;
+    state->counter = 0;  
 
     if (state->mqtt_client == NULL) {
         DEBUG_printf("Failed to create new mqtt client\n");
         return;
-    }
-
+    } 
+    // psa_crypto_init();
     if (mqtt_test_connect(state) == ERR_OK) {
+        absolute_time_t timeout = nil_time;
         while (true) {
             cyw43_arch_poll();
-            sleep_ms(1);
-            if (!notReady--) {
+            absolute_time_t now = get_absolute_time();
+            if (is_nil_time(timeout) || absolute_time_diff_us(now, timeout) <= 0) {
                 if (mqtt_client_is_connected(state->mqtt_client)) {
                     cyw43_arch_lwip_begin();
                     state->receiving = 1;
                     if (mqtt_test_publish(state) == ERR_OK) {
-                        DEBUG_printf("published %d\n", state->counter);
+                        if (state->counter != 0) {
+                            DEBUG_printf("published %d\n", state->counter);
+                        }
+                        timeout = make_timeout_time_ms(5000);
                         state->counter++;
                     } // else ringbuffer is full and we need to wait for messages to flush.
                     cyw43_arch_lwip_end();
                 } else {
-                    DEBUG_printf(".");
+                    // DEBUG_printf(".");
                 }
-
-                // MEM_STATS_DISPLAY();
-                // MEMP_STATS_DISPLAY(0);
-                // MEMP_STATS_DISPLAY(1);
-
-                notReady = 5000;
             }
         }
     }
@@ -247,16 +214,14 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
 
 void wait_for_usb() {
     while (!tud_cdc_connected()) {
-        DEBUG_printf(".");
+        // DEBUG_printf(".");
         sleep_ms(500);
     }
     DEBUG_printf("usb host detected\n");
 }
 
-int main() {
+int main() { 
     stdio_init_all();
-
-    wait_for_usb();
 
     if (cyw43_arch_init()) {
         DEBUG_printf("failed to initialise\n");

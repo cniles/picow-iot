@@ -1,0 +1,27 @@
+diff --git a/src/apps/mqtt/mqtt.c b/src/apps/mqtt/mqtt.c
+index 699061b2..c018b19b 100644
+--- a/src/apps/mqtt/mqtt.c
++++ b/src/apps/mqtt/mqtt.c
+@@ -1382,6 +1382,9 @@ mqtt_client_connect(mqtt_client_t *client, const ip_addr_t *ip_addr, u16_t port,
+ #if LWIP_ALTCP && LWIP_ALTCP_TLS
+   if (client_info->tls_config) {
+     client->conn = altcp_tls_new(client_info->tls_config, IP_GET_TYPE(ip_addr));
++    if (client_info->server_name != NULL) {
++      mbedtls_ssl_set_hostname(altcp_tls_context(client->conn), client_info->server_name);
++    }
+   } else
+ #endif
+   {
+diff --git a/src/include/lwip/apps/mqtt.h b/src/include/lwip/apps/mqtt.h
+index bece4005..aa667d23 100644
+--- a/src/include/lwip/apps/mqtt.h
++++ b/src/include/lwip/apps/mqtt.h
+@@ -86,6 +86,8 @@ struct mqtt_connect_client_info_t {
+ #if LWIP_ALTCP && LWIP_ALTCP_TLS
+   /** TLS configuration for secure connections */
+   struct altcp_tls_config *tls_config;
++  /** Server name for setting SNI */
++  const char *server_name;
+ #endif
+ };
+ 
