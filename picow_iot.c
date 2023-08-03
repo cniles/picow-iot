@@ -87,6 +87,35 @@ void run_dns_lookup(MQTT_CLIENT_T *state) {
     }
 }
 
+u32_t data_in = 0;
+
+u8_t buffer[1025];
+u8_t data_len = 0;
+
+static void mqtt_pub_start_cb(void *arg, const char *topic, u32_t tot_len) {
+    DEBUG_printf("mqtt_pub_start_cb: topic %s\n", topic);
+
+    if (tot_len > 1024) {
+        DEBUG_printf("Message length exceeds buffer size, discarding");
+    } else {
+        data_in = tot_len;
+        data_len = 0;
+    }
+}
+
+static void mqtt_pub_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags) {
+    if (data_in > 0) {
+        data_in -= len;
+        memcpy(&buffer[data_len], data, len);
+        data_len += len;
+
+        if (data_in == 0) {
+            buffer[data_len] = 0;
+            DEBUG_printf("Message received: %s\n", &buffer);
+        }
+    }
+}
+
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
     if (status != 0) {
         DEBUG_printf("Error during connection: err %d.\n", status);
@@ -99,6 +128,10 @@ void mqtt_pub_request_cb(void *arg, err_t err) {
     MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     DEBUG_printf("mqtt_pub_request_cb: err %d\n", err);
     state->received++;
+}
+
+void mqtt_sub_request_cb(void *arg, err_t err) {
+    DEBUG_printf("mqtt_sub_request_cb: err %d\n", err);
 }
 
 err_t mqtt_test_publish(MQTT_CLIENT_T *state)
@@ -186,12 +219,21 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
     // psa_crypto_init();
     if (mqtt_test_connect(state) == ERR_OK) {
         absolute_time_t timeout = nil_time;
+        bool subscribed = false;
+        mqtt_set_inpub_callback(state->mqtt_client, mqtt_pub_start_cb, mqtt_pub_data_cb, 0);
+
         while (true) {
             cyw43_arch_poll();
             absolute_time_t now = get_absolute_time();
             if (is_nil_time(timeout) || absolute_time_diff_us(now, timeout) <= 0) {
                 if (mqtt_client_is_connected(state->mqtt_client)) {
                     cyw43_arch_lwip_begin();
+
+                    if (!subscribed) {
+                        mqtt_sub_unsub(state->mqtt_client, "pico_w/recv", 0, mqtt_sub_request_cb, 0, 1);
+                        subscribed = true;
+                    }
+
                     if (mqtt_test_publish(state) == ERR_OK) {
                         if (state->counter != 0) {
                             DEBUG_printf("published %d\n", state->counter);
