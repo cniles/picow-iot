@@ -86,12 +86,12 @@
 #define PPP_DEBUG                   LWIP_DBG_OFF
 #define SLIP_DEBUG                  LWIP_DBG_OFF
 #define DHCP_DEBUG                  LWIP_DBG_OFF
-#define ALTCP_MBEDTLS_DEBUG      LWIP_DBG_ON
-#define MQTT_DEBUG               LWIP_DBG_OFF
-#define ALTCP_MBEDTLS_MEM_DEBUG   LWIP_DBG_OFF
+#define ALTCP_MBEDTLS_DEBUG         LWIP_DBG_ON
+#define MQTT_DEBUG                  LWIP_DBG_OFF
+#define ALTCP_MBEDTLS_MEM_DEBUG     LWIP_DBG_OFF
 
 #define LWIP_ALTCP               1
 #define LWIP_ALTCP_TLS           1
 #define LWIP_ALTCP_TLS_MBEDTLS   1
-#define PPP_NUM_TIMEOUTS 10
+#define MEMP_NUM_SYS_TIMEOUT     LWIP_NUM_SYS_TIMEOUT_INTERNAL + 1
 #endif
