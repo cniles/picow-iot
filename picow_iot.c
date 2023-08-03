@@ -20,9 +20,9 @@
 
 #define DEBUG_printf printf
 
-#define MQTT_TLS 0 // needs to be 1 for AWS IoT. Also set published QoS to 0 or 1
-#define CRYPTO_MOSQUITTO_LOCAL
-//#define CRYPTO_AWS_IOT
+#define MQTT_TLS 1 // needs to be 1 for AWS IoT. Also set published QoS to 0 or 1
+//#define CRYPTO_MOSQUITTO_LOCAL
+#define CRYPTO_AWS_IOT
 #include "crypto_consts.h"
 
 #if MQTT_TLS
@@ -40,7 +40,6 @@ const char *key = CRYPTO_KEY;
 typedef struct MQTT_CLIENT_T_ {
     ip_addr_t remote_addr;
     mqtt_client_t *mqtt_client;
-    u8_t receiving;
     u32_t received;
     u32_t counter;
     u32_t reconnect;
@@ -55,7 +54,6 @@ static MQTT_CLIENT_T* mqtt_client_init(void) {
         DEBUG_printf("failed to allocate state\n");
         return NULL;
     }
-    state->receiving = 0;
     state->received = 0;
     return state;
 }
@@ -100,7 +98,6 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
 void mqtt_pub_request_cb(void *arg, err_t err) {
     MQTT_CLIENT_T *state = (MQTT_CLIENT_T *)arg;
     DEBUG_printf("mqtt_pub_request_cb: err %d\n", err);
-    state->receiving = 0;
     state->received++;
 }
 
@@ -195,7 +192,6 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
             if (is_nil_time(timeout) || absolute_time_diff_us(now, timeout) <= 0) {
                 if (mqtt_client_is_connected(state->mqtt_client)) {
                     cyw43_arch_lwip_begin();
-                    state->receiving = 1;
                     if (mqtt_test_publish(state) == ERR_OK) {
                         if (state->counter != 0) {
                             DEBUG_printf("published %d\n", state->counter);
@@ -210,14 +206,6 @@ void mqtt_run_test(MQTT_CLIENT_T *state) {
             }
         }
     }
-}
-
-void wait_for_usb() {
-    while (!tud_cdc_connected()) {
-        // DEBUG_printf(".");
-        sleep_ms(500);
-    }
-    DEBUG_printf("usb host detected\n");
 }
 
 int main() { 
