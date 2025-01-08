@@ -173,6 +173,7 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
     struct altcp_tls_config *tls_config;
   
     #if defined(CRYPTO_CA) && defined(CRYPTO_KEY) && defined(CRYPTO_CERT)
+    
     DEBUG_printf("Setting up TLS with 2wayauth.\n");
     tls_config = altcp_tls_create_config_client_2wayauth(
         (const u8_t *)ca, 1 + strlen((const char *)ca),
@@ -180,12 +181,18 @@ err_t mqtt_test_connect(MQTT_CLIENT_T *state) {
         (const u8_t *)"", 0,
         (const u8_t *)cert, 1 + strlen((const char *)cert)
     );
-    // set this here as its a niche case at the moment.
+
+    // enable SNI on request
     // see mqtt-sni.patch for changes to support this.
-    ci.server_name = MQTT_SERVER_HOST;
+    altcp_tls_set_server_name(tls_config, MQTT_SERVER_HOST);
+
     #elif defined(CRYPTO_CERT)
     DEBUG_printf("Setting up TLS with cert.\n");
     tls_config = altcp_tls_create_config_client((const u8_t *) cert, 1 + strlen((const char *) cert));
+
+    // enable SNI on request
+    // see mqtt-sni.patch for changes to support this.
+    altcp_tls_set_server_name(tls_config, MQTT_SERVER_HOST);
     #endif
 
     if (tls_config == NULL) {
