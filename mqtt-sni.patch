@@ -1,27 +1,68 @@
-diff --git a/src/apps/mqtt/mqtt.c b/src/apps/mqtt/mqtt.c
-index 699061b2..c018b19b 100644
---- a/src/apps/mqtt/mqtt.c
-+++ b/src/apps/mqtt/mqtt.c
-@@ -1382,6 +1382,9 @@ mqtt_client_connect(mqtt_client_t *client, const ip_addr_t *ip_addr, u16_t port,
- #if LWIP_ALTCP && LWIP_ALTCP_TLS
-   if (client_info->tls_config) {
-     client->conn = altcp_tls_new(client_info->tls_config, IP_GET_TYPE(ip_addr));
-+    if (client_info->server_name != NULL) {
-+      mbedtls_ssl_set_hostname(altcp_tls_context(client->conn), client_info->server_name);
-+    }
-   } else
- #endif
-   {
-diff --git a/src/include/lwip/apps/mqtt.h b/src/include/lwip/apps/mqtt.h
-index bece4005..aa667d23 100644
---- a/src/include/lwip/apps/mqtt.h
-+++ b/src/include/lwip/apps/mqtt.h
-@@ -86,6 +86,8 @@ struct mqtt_connect_client_info_t {
- #if LWIP_ALTCP && LWIP_ALTCP_TLS
-   /** TLS configuration for secure connections */
-   struct altcp_tls_config *tls_config;
+diff --git a/src/apps/altcp_tls/altcp_tls_mbedtls.c b/src/apps/altcp_tls/altcp_tls_mbedtls.c
+index e787ae28..11dab664 100644
+--- a/src/apps/altcp_tls/altcp_tls_mbedtls.c
++++ b/src/apps/altcp_tls/altcp_tls_mbedtls.c
+@@ -107,6 +107,8 @@ struct altcp_tls_config {
+   u8_t pkey_count;
+   u8_t pkey_max;
+   mbedtls_x509_crt *ca;
 +  /** Server name for setting SNI */
 +  const char *server_name;
+ #if defined(MBEDTLS_SSL_CACHE_C) && ALTCP_MBEDTLS_USE_SESSION_CACHE
+   /** Inter-connection cache for fast connection startup */
+   struct mbedtls_ssl_cache_context cache;
+@@ -611,6 +613,7 @@ altcp_mbedtls_setup(void *conf, struct altcp_pcb *conn, struct altcp_pcb *inner_
+   int ret;
+   struct altcp_tls_config *config = (struct altcp_tls_config *)conf;
+   altcp_mbedtls_state_t *state;
++
+   if (!conf) {
+     return ERR_ARG;
+   }
+@@ -637,6 +640,15 @@ altcp_mbedtls_setup(void *conf, struct altcp_pcb *conn, struct altcp_pcb *inner_
+   conn->inner_conn = inner_conn;
+   conn->fns = &altcp_mbedtls_functions;
+   conn->state = state;
++
++  if (config->server_name != NULL) {
++    if ((ret = mbedtls_ssl_set_hostname(&state->ssl_context, config->server_name)) != 0) {
++      LWIP_DEBUGF(ALTCP_MBEDTLS_DEBUG, ("mbedtls_ssl_set_hostname failed\n"));
++    }
++    mbedtls_ssl_conf_authmode(&config->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
++  }
++
++
+   return ERR_OK;
+ }
+
+@@ -1330,6 +1342,14 @@ altcp_mbedtls_dealloc(struct altcp_pcb *conn)
+   }
+ }
+
++void altcp_tls_set_server_name(struct altcp_tls_config *config, const char *server_name) {
++  config->server_name = server_name;
++}
++
++const char *altcp_tls_get_server_name(struct altcp_tls_config *config) {
++  return config->server_name;
++}
++
+ const struct altcp_functions altcp_mbedtls_functions = {
+   altcp_mbedtls_set_poll,
+   altcp_mbedtls_recved,
+diff --git a/src/include/lwip/altcp_tls.h b/src/include/lwip/altcp_tls.h
+index fcb784d8..a62203e5 100644
+--- a/src/include/lwip/altcp_tls.h
++++ b/src/include/lwip/altcp_tls.h
+@@ -187,6 +187,11 @@ err_t altcp_tls_set_session(struct altcp_pcb *conn, struct altcp_tls_session *fr
+  */
+ void altcp_tls_free_session(struct altcp_tls_session *dest);
+
++
++void altcp_tls_set_server_name(struct altcp_tls_config *config, const char *server_name);
++
++const char *altcp_tls_get_server_name(struct altcp_tls_config *config);
++
+ #ifdef __cplusplus
+ }
  #endif
- };
- 
