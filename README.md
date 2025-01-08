@@ -4,7 +4,7 @@ This is a small example project that demonstrates connecting to an MQTT broker w
 
 ## Important note about SNI
 
-Some cloud providers (e.g. AWS) require that SNI be enabled on the client.  There does not appear to be a way to configure lwip's MQTT app client to set up SNI. This code uses a patched version of `mqtt.c` to support SNI.
+Some cloud providers (e.g. AWS, HiveMQ) require that SNI be enabled on the client.  There does not appear to be a way to configure lwip's MQTT app client to set up SNI. This code uses a patched version of `mqtt.c` to support SNI.
 
 If you want to connect to a cloud provider that requires SNI you'll need to apply the patch to the copy of LWIP thats used by the Pico SDK.
 
